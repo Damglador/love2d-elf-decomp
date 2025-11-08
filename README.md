@@ -6,6 +6,10 @@ Dependencies:
 - `tail`
 - `xxd`  - optional, outputs detected zip headers in HEX
 
+Usage: love-decomp <file>
+
+Output zip archives will be generated in the working directory.
+
 Only tested with Balatro.
 
 # Explanation
