@@ -1,0 +1,61 @@
+#!/usr/bin/env python
+
+import re
+import os
+import sys
+import subprocess
+
+sig = b'\x50\x4B\x03\x04'
+rest_of_header = b'.{26}'
+pattern = re.compile(sig + rest_of_header, re.DOTALL)
+file=sys.argv[1]
+
+def bprint(data: bytes):
+    try:
+        _ = subprocess.run(['xxd'], input=data)
+    except FileNotFoundError:
+        print("Can't output hex, xxd not found")
+
+
+with open(file, "rb") as f:
+    data = f.read()
+
+offsets = []
+all_headers = list(pattern.finditer(data))
+print(f"Detected zip headers: {len(all_headers)}")
+
+for m in all_headers:
+    offset = m.start()
+    match_bytes = m.group()
+
+    # Get file name length from the header
+    fnl_value = int.from_bytes(match_bytes[26:28], byteorder='little')
+
+    name_start = offset + 30
+    name_end = name_start + fnl_value
+
+    if name_end + 2 <= len(data):
+        # Get file name
+        filename = data[name_start:name_end]
+        check_bytes = data[name_end:name_end + 2]
+
+        # The file name should have only one / so it's not a subfolder
+        if filename.endswith(b'/') and check_bytes == b'UT' and filename.count(b'/') == 1:
+            print(f"-- Header on offset {offset}, file name length: {fnl_value}")
+            print(f"Filename: {filename.decode('utf-8', errors='ignore')}")
+            offsets.append(offset)
+            # Print header + name + UT in hex
+            bprint(data[offset:name_end + 2])
+
+print(f"Valid offsets: {offsets}")
+
+if len(offsets) > 0:
+    print("Creating archives for valid offsets:")
+    for offset in offsets:
+        archive=f'{os.path.basename(file)}-offset-{offset}.zip'
+        with open(archive, 'wb') as f:
+            result = subprocess.run(['tail', '-c', f'+{offset+1}', file], stdout=f)
+            if result.returncode == 0:
+                print(f"    Created {archive}")
+            else:
+                print(f"    Failed to create {archive}! Error code from tail: {result.returncode}")
